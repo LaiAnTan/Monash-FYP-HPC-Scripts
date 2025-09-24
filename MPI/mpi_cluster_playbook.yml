@@ -1,0 +1,68 @@
+- name: Setup NFS Server on master
+  hosts: master
+  become: yes
+  tasks:
+    - name: Install NFS server
+      ansible.builtin.package:
+        name:
+          - nfs-kernel-server
+        state: present
+    
+    - name: Create shared directory
+      ansible.builtin.file:
+        path: /shared # maybe change this path to ansible var
+        state: directory
+        owner: nobody
+        group: nogroup
+        mode: '0777'
+    
+    - name: Update /etc/exports
+      ansible.builtin.lineinfile:
+        path: '/etc/exports'
+        line: '/shared {{ item }}(rw,sync,no_subtree_check)'
+        state: present
+        create: true
+      loop: "{{ groups['workers'] }}"
+
+    - name: Export shared directory
+      ansible.builtin.command: exportfs -a
+    
+    - name: Restart NFS server
+      ansible.builtin.systemd_service:
+        name: nfs-kernel-server
+        state: restarted
+
+- name: Setup NFS client on workers
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Install NFS client
+      ansible.builtin.package:
+        name:
+          - nfs-common
+        state: present
+    
+    - name: Create shared directory
+      ansible.builtin.file:
+        path: /shared
+        state: directory
+    
+    - name: Update /etc/fstab
+      ansible.builtin.lineinfile:
+      path: '/etc/fstab'
+      line: "{{ groups['master'][0] }}:/shared /shared nfs4 defaults,_netdev 0 0"
+      state: present
+    
+- name: Setup OpenMPI
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install Packages # change this to install from source next time
+      ansible.builtin.package:
+        name:
+          - gcc
+          - openmpi-bin
+          - openmpi-common
+          - libopenmpi-dev
+          - libgtk2.0-dev
+        state: present
