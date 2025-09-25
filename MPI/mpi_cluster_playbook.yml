@@ -50,7 +50,7 @@
         src: "/home/mpiuser/.ssh/id_rsa_{{ inventory_hostname }}.pub"
       register: worker_pubkey
     - name: Add worker's public key to master authorized_keys
-      delegate_to: master
+      delegate_to: "{{ groups['master'][0] }}"
       ansible.posix.authorized_key:
         user: mpiuser
         state: present
