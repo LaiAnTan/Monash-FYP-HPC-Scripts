@@ -1,3 +1,71 @@
+# this playbook does 3 things, setup passwordless SSH, NFS and OpenMPI
+# before running this playbook: create new netplan and apply it
+
+- name: Setup SSH for master
+  hosts: master
+  become: yes
+  tasks:
+    - name: Install SSH server and client
+      ansible.builtin.package:
+        name:
+          - openssh-server
+          - openssh-client
+        state: present
+    - name: Generate SSH key pair for mpiuser
+      ansible.builtin.user:
+        name: mpiuser
+        generate_ssh_key: yes
+        ssh_key_bits: 2048
+        ssh_key_file: /home/mpiuser/.ssh/id_rsa_master
+      become: yes
+    - name: Read master's public key
+      ansible.builtin.slurp:
+        src: "/home/mpiuser/.ssh/id_rsa_master.pub"
+      register: master_pubkey
+    - name: Add master's public key to worker authorized_keys
+      delegate_to: "{{ item }}"
+      ansible.posix.authorized_key:
+        user: mpiuser
+        state: present
+        key: "{{ master_pubkey['content'] | b64decode }}"
+      loop: "{{ groups['worker'] }}"
+
+- name: Setup SSH and keys for workers
+  hosts: worker
+  become: yes
+  tasks:
+    - name: Install SSH server and client
+      ansible.builtin.package:
+        name:
+          - openssh-server
+          - openssh-client
+        state: present
+    - name: Generate SSH key pair for mpiuser
+      ansible.builtin.user:
+        name: mpiuser
+        generate_ssh_key: yes
+        ssh_key_bits: 2048
+        ssh_key_file: "/home/mpiuser/.ssh/id_rsa_{{ inventory_hostname }}"
+    - name: Read worker's public key
+      ansible.builtin.slurp:
+        src: "/home/mpiuser/.ssh/id_rsa_{{ inventory_hostname }}.pub"
+      register: worker_pubkey
+    - name: Add worker's public key to master authorized_keys
+      delegate_to: master
+      ansible.posix.authorized_key:
+        user: mpiuser
+        state: present
+        key: "{{ worker_pubkey['content'] | b64decode }}"
+
+- name: Restart SSH Service
+  hosts: all
+  become: yes
+  tasks:
+    - name: Restart SSH service
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: restarted
+
 - name: Setup NFS Server on master
   hosts: master
   become: yes
@@ -22,7 +90,7 @@
         line: '/shared {{ item }}(rw,sync,no_subtree_check)'
         state: present
         create: true
-      loop: "{{ groups['workers'] }}"
+      loop: "{{ groups['worker'] }}"
 
     - name: Export shared directory
       ansible.builtin.command: exportfs -a
@@ -33,7 +101,7 @@
         state: restarted
 
 - name: Setup NFS client on workers
-  hosts: workers
+  hosts: worker
   become: yes
   tasks:
     - name: Install NFS client
@@ -49,9 +117,17 @@
     
     - name: Update /etc/fstab
       ansible.builtin.lineinfile:
-      path: '/etc/fstab'
-      line: "{{ groups['master'][0] }}:/shared /shared nfs4 defaults,_netdev 0 0"
-      state: present
+        path: '/etc/fstab'
+        line: "{{ groups['master'][0] }}:/shared /shared nfs4 defaults,_netdev 0 0"
+        state: present
+    
+    - name: Mount shared directory
+      ansible.builtin.mount:
+        path: /shared
+        src: "{{ groups['master'][0] }}:/shared"
+        fstype: nfs4
+        opts: defaults,_netdev
+        state: mounted
     
 - name: Setup OpenMPI
   hosts: all
