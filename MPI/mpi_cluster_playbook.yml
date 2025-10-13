@@ -77,7 +77,7 @@
     
     - name: Create shared directory
       ansible.builtin.file:
-        path: /shared # maybe change this path to ansible var
+        path: /home/mpiuser/shared # maybe change this path to ansible var
         state: directory
         owner: nobody
         group: nogroup
@@ -86,7 +86,8 @@
     - name: Update /etc/exports
       ansible.builtin.lineinfile:
         path: '/etc/exports'
-        line: '/shared {{ item }}(rw,sync,no_subtree_check)'
+        regexp: '.*\s{{ item }}\(.*\)$'
+        line: '/home/mpiuser/shared {{ item }}(rw,sync,no_subtree_check)'
         state: present
         create: true
       loop: "{{ groups['worker'] }}"
@@ -111,19 +112,20 @@
     
     - name: Create shared directory
       ansible.builtin.file:
-        path: /shared
+        path: /home/mpiuser/shared
         state: directory
     
     - name: Update /etc/fstab
       ansible.builtin.lineinfile:
         path: '/etc/fstab'
-        line: "{{ groups['master'][0] }}:/shared /shared nfs4 defaults,_netdev 0 0"
+        regexp: '^{{ groups["master"][0] }}:/\S+\s'
+        line: "{{ groups['master'][0] }}:/home/mpiuser/shared /home/mpiuser/shared nfs4 defaults,_netdev 0 0"
         state: present
     
     - name: Mount shared directory
       ansible.builtin.mount:
-        path: /shared
-        src: "{{ groups['master'][0] }}:/shared"
+        path: /home/mpiuser/shared
+        src: "{{ groups['master'][0] }}:/home/mpiuser/shared"
         fstype: nfs4
         opts: defaults,_netdev
         state: mounted

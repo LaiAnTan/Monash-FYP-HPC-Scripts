@@ -17,3 +17,12 @@ all:
           ansible_host: 192.168.1.2
           ansible_user: mpiuser
           ansible_ssh_pass: mpiuser
+        node3:
+          ansible_host: 192.168.1.3
+          ansible_user: mpiuser
+          ansible_ssh_pass: mpiuser
+        node4:
+          ansible_host: 192.168.1.4
+          ansible_user: mpiuser
+          ansible_ssh_pass: mpiuser
+
